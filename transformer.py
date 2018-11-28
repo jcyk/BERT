@@ -51,7 +51,7 @@ class TransformerLayer(nn.Module):
             external_attn = None
 
         residual = x
-        x = F.gelu(self.fc1(x))
+        x = gelu(self.fc1(x))
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.fc2(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
@@ -203,20 +203,21 @@ class SelfAttentionMask(nn.Module):
     def forward(self, size):
         if self.weights is None or size > self.weights.size(0):
             self.weights = SelfAttentionMask.get_mask(size)
-        res = self.weights[:size,:size].cuda().detach()
+        res = self.weights[:size,:size].detach()
         return res
 
 
 class SinusoidalPositionalEmbedding(nn.Module):
     """This module produces sinusoidal positional embeddings of any length.
     """
-    def __init__(self, embedding_dim, init_size=1024):
+    def __init__(self, embedding_dim, init_size=1024, device=0):
         super(SinusoidalPositionalEmbedding, self).__init__()
         self.embedding_dim = embedding_dim
         self.weights = SinusoidalPositionalEmbedding.get_embedding(
             init_size,
             embedding_dim
         )
+        self.device= device
 
     @staticmethod
     def get_embedding(num_embeddings, embedding_dim):
@@ -246,5 +247,5 @@ class SinusoidalPositionalEmbedding(nn.Module):
             )
 
         positions = offset + torch.arange(seq_len)
-        res = self.weights.index_select(0, positions).unsqueeze(1).expand(-1, bsz, -1).detach()
-        return res.cuda()
+        res = self.weights.index_select(0, positions).unsqueeze(1).expand(-1, bsz, -1).cuda(self.device).detach()
+        return res

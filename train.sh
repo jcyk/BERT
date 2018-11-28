@@ -1,14 +1,14 @@
-python3 train_dist.py --embed_dim 768 \
-                      --ff_embed_dim 3072 \
-                      --num_heads 12 \
-                      --layers 12 \
+python3 train_dist.py --embed_dim 128 \
+                      --ff_embed_dim 256 \
+                      --num_heads 8 \
+                      --layers 2 \
                       --dropout 0.1 \
-                      --train_data \
-                      --vocab \
+                      --train_data toy/train\
+                      --vocab toy/vocab\
                       --batch_size 128\
                       --max_len 512 \
-                      --world_size 4\
+                      --world_size 2\
                       --gpus 2\
-                      --MASTER_ADDR \
-                      --MASTER_PORT \
-                      --start_rank \
+                      --MASTER_ADDR 172.16.18.240\
+                      --MASTER_PORT 29500\
+                      --start_rank 0\

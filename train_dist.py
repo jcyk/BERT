@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import os
 import torch
-import dist as dist
+import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -11,7 +11,9 @@ from bert import BERTLM
 from data import Vocab, DataLoader
 
 import argparse, os
+
 def parse_config():
+    parser = argparse.ArgumentParser()
     parser.add_argument('--embed_dim', type=int)
     parser.add_argument('--ff_embed_dim', type=int)
     parser.add_argument('--num_heads', type=int)
@@ -27,7 +29,7 @@ def parse_config():
     parser.add_argument('--gpus', type=int)
     parser.add_argument('--MASTER_ADDR', type=str)
     parser.add_argument('--MASTER_PORT', type=str)
-    parser.add_argument('--start_rank', type=str)
+    parser.add_argument('--start_rank', type=int)
 
     return parser.parse_args()
 
@@ -38,17 +40,17 @@ def average_gradients(model):
         dist.all_reduce(param.grad.data, op=dist.reduce_op.SUM, group=0)
         param.grad.data /= size
 
-def run(args, local_rank, size):
+def run(args, local_rank):
     """ Distributed Synchronous Example """
     torch.manual_seed(1234)
     vocab = Vocab(args.vocab, min_occur_cnt=5)
-    model = BERTLM(vocab, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.layers)
-    model = model.cuda(loca_rank)
+    model = BERTLM(local_rank, vocab, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.layers)
+    model = model.cuda(local_rank)
     
     torch.manual_seed(1234+dist.get_rank())
-    optimizer = optim.Adam(model.parameters(), lr=1e-4, (0.9, 0.999), weight_decay=0.01)
+    optimizer = optim.Adam(model.parameters(),1e-4, (0.9, 0.999), weight_decay=0.01)
 
-    train_data = DataLoader(vocab, args.train_data, vocab, args.batch_size, args.max_len)
+    train_data = DataLoader(vocab, args.train_data, args.batch_size, args.max_len)
     for truth, inp, seg, msk, nxt_snt_flag in train_data:
 
         truth = truth.cuda(local_rank)
@@ -60,7 +62,7 @@ def run(args, local_rank, size):
 
         optimizer.zero_grad()
         loss = model(truth, inp, seg, msk, nxt_snt_flag)
-        print loss.item()
+        print (loss.item())
         loss.backward()
         average_gradients(model)
         optimizer.step()
@@ -70,7 +72,7 @@ def init_processes(args, local_rank, fn, backend='gloo'):
     os.environ['MASTER_ADDR'] = args.MASTER_ADDR
     os.environ['MASTER_PORT'] = args.MASTER_PORT
     dist.init_process_group(backend, rank=args.start_rank+local_rank, world_size=args.world_size)
-    fn(args, local_rank, size)
+    fn(args, local_rank)
 
 if __name__ == "__main__":
     mp.set_start_method('spawn')

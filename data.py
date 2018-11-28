@@ -2,7 +2,7 @@ import random
 import torch
 import numpy as np
 
-CLS, SEP, MASK = '<-CLS->', '<-SEP->', '<-MASK->'
+PAD, UNK, CLS, SEP, MASK = '<-PAD->', '<-UNK->', '<-CLS->', '<-SEP->', '<-MASK->'
 
 def ListsToTensor(xs, vocab=None):
     max_len = max(len(x) for x in xs)
@@ -56,14 +56,14 @@ def batchify(data, vocab):
     truth = ListsToTensor(truth, vocab)
     inp = ListsToTensor(inp, vocab)
     seg = ListsToTensor(seg)
-    msk = ListsToTensor(msk)
+    msk = ListsToTensor(msk).to(torch.uint8)
     nxt_snt_flag = torch.LongTensor(nxt_snt_flag)
 
     return truth, inp, seg, msk, nxt_snt_flag
 
 
 class DataLoader(object):
-    def __init__(self, vocab, filename, vocab, batch_size, max_len):
+    def __init__(self, vocab, filename, batch_size, max_len):
         self.data = []
         self.batch_size = batch_size
         self.vocab = vocab
@@ -78,11 +78,11 @@ class DataLoader(object):
         batches = []
         for a, r in enumerate(idx[:-1]):
             b = a + 1
-            if max( len(self.data[b]) , len(self.data[r]) ) + len(self.data[a]) <= max_len:
-                batches.append(self.data[a], self.data[b], self.data[r])
+            if max( len(self.data[b]) , len(self.data[r]) ) + len(self.data[a]) <= self.max_len:
+                batches.append((self.data[a], self.data[b], self.data[r]))
         idx = 0
         while idx < len(batches):
-            yield batchify(batches[idx:idx+self.batch_size], vocab)
+            yield batchify(batches[idx:idx+self.batch_size], self.vocab)
             idx += self.batch_size
 
 class Vocab(object):
@@ -110,7 +110,7 @@ class Vocab(object):
         return self._padding_idx
     
     def random_token(self):
-        return self._idx2token(np.random.randint(self.size))
+        return self.idx2token(np.random.randint(self.size))
 
     def idx2token(self, x):
         if isinstance(x, list):
