@@ -57,33 +57,34 @@ def run(args, local_rank):
     batch_acm = 0
     acc_acm, ntokens_acm, acc_nxt_acm, npairs_acm = 0., 0., 0., 0.
     loss_acm = 0.
-    for truth, inp, seg, msk, nxt_snt_flag in train_data:
+    while True:
+        for truth, inp, seg, msk, nxt_snt_flag in train_data:
 
-        truth = truth.cuda(local_rank)
-        inp = inp.cuda(local_rank)
-        seg = seg.cuda(local_rank)
-        msk = msk.cuda(local_rank)
-        nxt_snt_flag = nxt_snt_flag.cuda(local_rank)
+            truth = truth.cuda(local_rank)
+            inp = inp.cuda(local_rank)
+            seg = seg.cuda(local_rank)
+            msk = msk.cuda(local_rank)
+            nxt_snt_flag = nxt_snt_flag.cuda(local_rank)
 
 
-        optimizer.zero_grad()
-        loss, acc, ntokens, acc_nxt, npairs = model(truth, inp, seg, msk, nxt_snt_flag)
-        loss_acm += loss.item()
-        acc_acm += acc
-        ntokens_acm += ntokens
-        acc_nxt_acm += acc_nxt
-        npairs_acm += npairs
-        batch_acm +=1
+            optimizer.zero_grad()
+            loss, acc, ntokens, acc_nxt, npairs = model(truth, inp, seg, msk, nxt_snt_flag)
+            loss_acm += loss.item()
+            acc_acm += acc
+            ntokens_acm += ntokens
+            acc_nxt_acm += acc_nxt
+            npairs_acm += npairs
+            batch_acm +=1
 
-        loss.backward()
-        average_gradients(model)
-        optimizer.step()
-        if batch_acm%args.print_every == -1%args.print_every:
-            print ('batch_acm %d, acc %.3f, nxt_acc %.3f'%(batch_acm, acc_acm/ntokens_acm), acc_nxt_acm/npairs_acm)
-            acc_acm, ntokens_acm, acc_nxt_acm, npairs_acm = 0., 0., 0., 0.
-            loss_acm = 0.
-        if batch_acm%args.save_every == -1%args.save_every:
-            torch.save({'args':args, 'model':model.state_dict()}, 'ckpt/batch_%d'%batch_acm)
+            loss.backward()
+            average_gradients(model)
+            optimizer.step()
+            if batch_acm%args.print_every == -1%args.print_every:
+                print ('batch_acm %d, acc %.3f, nxt_acc %.3f'%(batch_acm, acc_acm/ntokens_acm, acc_nxt_acm/npairs_acm))
+                acc_acm, ntokens_acm, acc_nxt_acm, npairs_acm = 0., 0., 0., 0.
+                loss_acm = 0.
+            if batch_acm%args.save_every == -1%args.save_every:
+                torch.save({'args':args, 'model':model.state_dict()}, 'ckpt/batch_%d_rank_%d'%(batch_acm, dist.get_rank()))
 
 def init_processes(args, local_rank, fn, backend='gloo'):
     """ Initialize the distributed environment. """
