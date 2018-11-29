@@ -191,9 +191,10 @@ def Embedding(num_embeddings, embedding_dim, padding_idx):
     return m
 
 class SelfAttentionMask(nn.Module):
-    def __init__(self, init_size = 100):
+    def __init__(self, init_size = 100, device = 0):
         super(SelfAttentionMask, self).__init__()
         self.weights = SelfAttentionMask.get_mask(init_size)
+        self.device = device
     
     @staticmethod
     def get_mask(size):
@@ -203,9 +204,27 @@ class SelfAttentionMask(nn.Module):
     def forward(self, size):
         if self.weights is None or size > self.weights.size(0):
             self.weights = SelfAttentionMask.get_mask(size)
-        res = self.weights[:size,:size].detach()
+        res = self.weights[:size,:size].cuda(self.device).detach()
         return res
 
+class LearnedPositionalEmbedding(nn.Module):
+    """This module produces LearnedPositionalEmbedding.
+    """
+    def __init__(self, embedding_dim, init_size=1024, device=0):
+        super(LearnedPositionalEmbedding, self).__init__()
+        self.weights = nn.Embedding(init_size, embedding_dim)
+        self.device= device
+        self.reset_parameters()
+    
+    def reset_parameters(self):
+        nn.init.constant_(self.weights.weight, 0.)
+
+    def forward(self, input, offset=0):
+        """Input is expected to be of size [seq_len x bsz]."""
+        seq_len, bsz = input.size()
+        positions = offset + torch.arange(seq_len)
+        res = self.weights(positions).unsqueeze(1).expand(-1, bsz, -1).cuda(self.device)
+        return res
 
 class SinusoidalPositionalEmbedding(nn.Module):
     """This module produces sinusoidal positional embeddings of any length.

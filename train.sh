@@ -12,3 +12,5 @@ python3 train_dist.py --embed_dim 128 \
                       --MASTER_ADDR 172.16.18.240\
                       --MASTER_PORT 29500\
                       --start_rank 0\
+                      --print_every 100\
+                      --save_every 10000

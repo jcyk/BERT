@@ -24,6 +24,8 @@ def parse_config():
     parser.add_argument('--vocab', type=str)
     parser.add_argument('--batch_size', type=int)
     parser.add_argument('--max_len', type=int)
+    parser.add_argument('--print_every', type=int)
+    parser.add_argument('--save_every', type=int)
 
     parser.add_argument('--world_size', type=int)
     parser.add_argument('--gpus', type=int)
@@ -51,6 +53,10 @@ def run(args, local_rank):
     optimizer = optim.Adam(model.parameters(),1e-4, (0.9, 0.999), weight_decay=0.01)
 
     train_data = DataLoader(vocab, args.train_data, args.batch_size, args.max_len)
+
+    batch_acm = 0
+    acc_acm, ntokens_acm, acc_nxt_acm, npairs_acm = 0., 0., 0., 0.
+    loss_acm = 0.
     for truth, inp, seg, msk, nxt_snt_flag in train_data:
 
         truth = truth.cuda(local_rank)
@@ -61,11 +67,23 @@ def run(args, local_rank):
 
 
         optimizer.zero_grad()
-        loss = model(truth, inp, seg, msk, nxt_snt_flag)
-        print (loss.item())
+        loss, acc, ntokens, acc_nxt, npairs = model(truth, inp, seg, msk, nxt_snt_flag)
+        loss_acm += loss.item()
+        acc_acm += acc
+        ntokens_acm += ntokens
+        acc_nxt_acm += acc_nxt
+        npairs_acm += npairs
+        batch_acm +=1
+
         loss.backward()
         average_gradients(model)
         optimizer.step()
+        if batch_acm%args.print_every == -1%args.print_every:
+            print ('batch_acm %d, acc %.3f, nxt_acc %.3f'%(batch_acm, acc_acm/ntokens_acm), acc_nxt_acm/npairs_acm)
+            acc_acm, ntokens_acm, acc_nxt_acm, npairs_acm = 0., 0., 0., 0.
+            loss_acm = 0.
+        if batch_acm%args.save_every == -1%args.save_every:
+            torch.save({'args':args, 'model':model.state_dict()}, 'ckpt/batch_%d'%batch_acm)
 
 def init_processes(args, local_rank, fn, backend='gloo'):
     """ Initialize the distributed environment. """
