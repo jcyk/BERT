@@ -47,7 +47,7 @@ def batchify(data, vocab):
         
         x = ['CLS']+a+['SEP']+r+['SEP']
         truth.append(x)
-        seg.append([0]*(len(a)+2) + [1]*(len(b)+1))
+        seg.append([0]*(len(a)+2) + [1]*(len(r)+1))
         masked_x, mask = random_mask(x, vocab)
         inp.append(masked_x)
         msk.append(mask)
@@ -64,22 +64,33 @@ def batchify(data, vocab):
 
 class DataLoader(object):
     def __init__(self, vocab, filename, batch_size, max_len):
-        self.data = []
         self.batch_size = batch_size
         self.vocab = vocab
         self.max_len = max_len
-        for line in open(filename).readlines():
-            d = line.strip().split()[:max_len]
-            self.data.append(d)
+        self.filename = filename
+        self.stream = open(self.filename, encoding='utf8')
 
     def __iter__(self):
-        idx = list(range(len(self.data)))
+        
+        lines = self.stream.readlines(1024000)
+
+        if not lines:
+            self.stream.close()
+            self.stream = open(self.filename, encoding='utf8')
+            lines = self.stream.readlines(1024000)
+
+        data = [] 
+        for line in lines:
+            d = line.strip().split()[:self.max_len]
+            data.append(d)
+
+        idx = list(range(len(data)))
         random.shuffle(idx)
         batches = []
         for a, r in enumerate(idx[:-1]):
             b = a + 1
-            if max( len(self.data[b]) , len(self.data[r]) ) + len(self.data[a]) <= self.max_len:
-                batches.append((self.data[a], self.data[b], self.data[r]))
+            if max( len(data[b]) , len(data[r]) ) + len(data[a]) <= self.max_len:
+                batches.append((data[a], data[b], data[r]))
         idx = 0
         while idx < len(batches):
             yield batchify(batches[idx:idx+self.batch_size], self.vocab)
@@ -88,8 +99,11 @@ class DataLoader(object):
 class Vocab(object):
     def __init__(self, filename, min_occur_cnt, specials = None):
         idx2token = [PAD, UNK] + ( specials if specials is not None else [])
-        for line in open(filename).readlines():
-            token, cnt = line.strip().split()
+        for line in open(filename, encoding='utf8').readlines():
+            try: 
+                token, cnt = line.strip().split()
+            except:
+                continue
             if int(cnt) >= min_occur_cnt:
                 idx2token.append(token)
         self._token2idx = dict(zip(idx2token, range(len(idx2token))))

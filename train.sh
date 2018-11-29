@@ -9,7 +9,7 @@ python3 train_dist.py --embed_dim 128 \
                       --max_len 512 \
                       --world_size 2\
                       --gpus 2\
-                      --MASTER_ADDR 172.16.18.240\
+                      --MASTER_ADDR 100.88.66.72\
                       --MASTER_PORT 29500\
                       --start_rank 0\
                       --print_every 100\
