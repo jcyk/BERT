@@ -43,7 +43,7 @@ def average_gradients(model):
         param.grad.data /= size
 
 def run(args, local_rank):
-    """ Distributed Synchronous Example """
+    """ Distributed Synchronous """
     torch.manual_seed(1234)
     vocab = Vocab(args.vocab, min_occur_cnt=5)
     model = BERTLM(local_rank, vocab, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.layers)
