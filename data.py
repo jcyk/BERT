@@ -22,7 +22,7 @@ def random_mask(x, vocab):
     for mi, xi in zip(_mask, x):
         if mi == 0:
             masked_x.append(xi)
-            mask.append(1)
+            mask.append(0)
         else:
             if mi == 1:
                 masked_x.append(MASK)
@@ -30,7 +30,7 @@ def random_mask(x, vocab):
                 masked_x.append(vocab.random_token())
             elif mi == 3:
                 masked_x.append(xi)
-            mask.append(0)
+            mask.append(1)
     return masked_x, mask
 
 def batchify(data, vocab):

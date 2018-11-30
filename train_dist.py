@@ -78,6 +78,7 @@ def run(args, local_rank):
 
             loss.backward()
             average_gradients(model)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             if batch_acm%args.print_every == -1%args.print_every:
                 print ('batch_acm %d, acc %.3f, nxt_acc %.3f'%(batch_acm, acc_acm/ntokens_acm, acc_nxt_acm/npairs_acm))
@@ -86,7 +87,7 @@ def run(args, local_rank):
             if batch_acm%args.save_every == -1%args.save_every:
                 torch.save({'args':args, 'model':model.state_dict()}, 'ckpt/batch_%d_rank_%d'%(batch_acm, dist.get_rank()))
 
-def init_processes(args, local_rank, fn, backend='gloo'):
+def init_processes(args, local_rank, fn, backend='nccl'):
     """ Initialize the distributed environment. """
     os.environ['MASTER_ADDR'] = args.MASTER_ADDR
     os.environ['MASTER_PORT'] = args.MASTER_PORT

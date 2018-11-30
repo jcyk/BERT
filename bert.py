@@ -39,15 +39,14 @@ class BERTLM(nn.Module):
         log_probs = torch.log_softmax(F.linear(x, out_proj_weight, self.out_proj_bias), -1)
 
         _, pred = log_probs.max(-1)
-        acc = torch.eq(pred, truth).float().masked_fill_(torch.eq(truth, self.vocab.padding_idx), 0.).masked_fill_(msk, 0.).sum().item()
+        acc = torch.eq(pred, truth).float().masked_select(msk).sum().item()
+        tot_tokens = msk.float().sum().item()
         
         loss = F.nll_loss(log_probs.view(seq_len*bsz, -1), truth.view(-1), reduction='none').view(seq_len, bsz)
-        loss.masked_fill_(torch.eq(truth, self.vocab.padding_idx), 0.).masked_fill_(msk, 0.)
-        tot_tokens = torch.eq(msk, 0).float().sum().item()
+        loss = loss.masked_select(msk)
 
         nxt_snt_pred = torch.sigmoid(self.nxt_snt_pred(x[0]).squeeze(1))
         nxt_snt_acc = torch.eq(torch.gt(nxt_snt_pred, 0.5), nxt_snt_flag).float().sum().item()
         nxt_snt_loss = F.binary_cross_entropy(nxt_snt_pred, nxt_snt_flag.float(), reduction='none')
-
 
         return (loss.sum() / tot_tokens + nxt_snt_loss.sum() / bsz), acc, tot_tokens, nxt_snt_acc, bsz
