@@ -17,6 +17,7 @@ def parse_config():
 punc = re.compile(r"\W+", )
 
 def work_wiki_char(line):
+    "This function only works for zhwiki at char level"
     line = line.strip()
     if line.startswith("</doc>"):
         return []
