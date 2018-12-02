@@ -3,10 +3,10 @@ python3 train_dist.py --embed_dim 768 \
                       --num_heads 12 \
                       --layers 12 \
                       --dropout 0.1 \
-                      --train_data tmp\
-                      --vocab tmp_vocab\
-                      --batch_size 32\
-                      --max_len 256 \
+                      --train_data toy/train\
+                      --vocab toy/vocab\
+                      --batch_size 24\
+                      --max_len 128 \
                       --world_size 8\
                       --gpus 8\
                       --MASTER_ADDR 100.88.66.72\

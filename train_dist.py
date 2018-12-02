@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-import os
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -8,10 +6,10 @@ import torch.optim as optim
 import torch.multiprocessing as mp
 
 from bert import BERTLM
-from data import Vocab, DataLoader
+from data import Vocab, DataLoader, CLS, SEP, MASK
 
 import argparse, os
-
+import random
 def parse_config():
     parser = argparse.ArgumentParser()
     parser.add_argument('--embed_dim', type=int)
@@ -35,6 +33,10 @@ def parse_config():
 
     return parser.parse_args()
 
+def update_lr(optimizer, lr):
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+ 
 def average_gradients(model):
     """ Gradient averaging. """
     size = float(dist.get_world_size())
@@ -45,11 +47,12 @@ def average_gradients(model):
 def run(args, local_rank):
     """ Distributed Synchronous """
     torch.manual_seed(1234)
-    vocab = Vocab(args.vocab, min_occur_cnt=5)
+    vocab = Vocab(args.vocab, min_occur_cnt=5, specials=[CLS, SEP, MASK])
     model = BERTLM(local_rank, vocab, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.layers)
     model = model.cuda(local_rank)
     
     torch.manual_seed(1234+dist.get_rank())
+    random.seed(5678+dist.get_rank())
     optimizer = optim.Adam(model.parameters(),1e-4, (0.9, 0.999), weight_decay=0.01)
 
     train_data = DataLoader(vocab, args.train_data, args.batch_size, args.max_len)
@@ -59,32 +62,32 @@ def run(args, local_rank):
     loss_acm = 0.
     while True:
         for truth, inp, seg, msk, nxt_snt_flag in train_data:
-
+            batch_acm += 1
+            if batch_acm <= 10000:
+                update_lr(optimizer, 1e-4*batch_acm/10000)
             truth = truth.cuda(local_rank)
             inp = inp.cuda(local_rank)
             seg = seg.cuda(local_rank)
             msk = msk.cuda(local_rank)
             nxt_snt_flag = nxt_snt_flag.cuda(local_rank)
 
-
             optimizer.zero_grad()
-            loss, acc, ntokens, acc_nxt, npairs = model(truth, inp, seg, msk, nxt_snt_flag)
+            pred, loss, acc, ntokens, acc_nxt, npairs = model(truth, inp, seg, msk, nxt_snt_flag)
             loss_acm += loss.item()
             acc_acm += acc
             ntokens_acm += ntokens
             acc_nxt_acm += acc_nxt
             npairs_acm += npairs
-            batch_acm +=1
 
             loss.backward()
             average_gradients(model)
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             if batch_acm%args.print_every == -1%args.print_every:
-                print ('batch_acm %d, acc %.3f, nxt_acc %.3f'%(batch_acm, acc_acm/ntokens_acm, acc_nxt_acm/npairs_acm))
+                print ('batch_acm %d, loss %.3f, acc %.3f, nxt_acc %.3f'%(batch_acm, loss_acm/batch_acm, acc_acm/ntokens_acm, acc_nxt_acm/npairs_acm))
                 acc_acm, ntokens_acm, acc_nxt_acm, npairs_acm = 0., 0., 0., 0.
                 loss_acm = 0.
-            if batch_acm%args.save_every == -1%args.save_every:
+            if dist.get_rank() ==0 and batch_acm%args.save_every == -1%args.save_every:
                 torch.save({'args':args, 'model':model.state_dict()}, 'ckpt/batch_%d_rank_%d'%(batch_acm, dist.get_rank()))
 
 def init_processes(args, local_rank, fn, backend='nccl'):
@@ -98,6 +101,9 @@ if __name__ == "__main__":
     mp.set_start_method('spawn')
     args = parse_config()
 
+    if args.world_size == 1:
+        run(args, 0)
+        exit(0)
     processes = []
     for rank in range(args.gpus):
         p = mp.Process(target=init_processes, args=(args, rank, run))

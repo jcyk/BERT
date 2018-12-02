@@ -28,7 +28,7 @@ def work_wiki_char(line):
     sent = []
     for ch in char_seq:
         sent.append(ch)
-        if len(sent)>=10 and punc.fullmatch(ch) is not None:
+        if len(sent)>=20 and punc.fullmatch(ch) is not None:
             res.append(sent)
             sent = []
     if sent:

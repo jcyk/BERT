@@ -3,6 +3,7 @@ import torch
 import numpy as np
 
 PAD, UNK, CLS, SEP, MASK = '<-PAD->', '<-UNK->', '<-CLS->', '<-SEP->', '<-MASK->'
+BUFSIZE = 1024000
 
 def ListsToTensor(xs, vocab=None):
     max_len = max(len(x) for x in xs)
@@ -19,8 +20,9 @@ def ListsToTensor(xs, vocab=None):
 def random_mask(x, vocab):
     masked_x, mask = [], []
     _mask = np.random.choice(4, len(x), p = [0.85, 0.15*0.8, 0.15*0.1, 0.15*0.1])
+    #
     for mi, xi in zip(_mask, x):
-        if mi == 0:
+        if mi == 0 or (xi == CLS or xi == SEP):
             masked_x.append(xi)
             mask.append(0)
         else:
@@ -37,7 +39,7 @@ def batchify(data, vocab):
     truth, inp, seg, msk = [], [], [], []
     nxt_snt_flag = []
     for a, b, r in data:
-        x = ['CLS']+a+['SEP']+b+['SEP']
+        x = [CLS]+a+[SEP]+b+[SEP]
         truth.append(x)
         seg.append([0]*(len(a)+2) + [1]*(len(b)+1))
         masked_x, mask = random_mask(x, vocab)
@@ -45,7 +47,7 @@ def batchify(data, vocab):
         msk.append(mask)
         nxt_snt_flag.append(1)
         
-        x = ['CLS']+a+['SEP']+r+['SEP']
+        x = [CLS]+a+[SEP]+r+[SEP]
         truth.append(x)
         seg.append([0]*(len(a)+2) + [1]*(len(r)+1))
         masked_x, mask = random_mask(x, vocab)
@@ -72,18 +74,17 @@ class DataLoader(object):
 
     def __iter__(self):
         
-        lines = self.stream.readlines(1024000)
+        lines = self.stream.readlines(BUFSIZE)
 
         if not lines:
             self.stream.close()
             self.stream = open(self.filename, encoding='utf8')
-            lines = self.stream.readlines(1024000)
+            lines = self.stream.readlines(BUFSIZE)
 
         data = [] 
         for line in lines:
             d = line.strip().split()[:self.max_len]
             data.append(d)
-
         idx = list(range(len(data)))
         random.shuffle(idx)
         batches = []
@@ -91,6 +92,7 @@ class DataLoader(object):
             b = a + 1
             if max( len(data[b]) , len(data[r]) ) + len(data[a]) <= self.max_len:
                 batches.append((data[a], data[b], data[r]))
+        random.shuffle(batches)
         idx = 0
         while idx < len(batches):
             yield batchify(batches[idx:idx+self.batch_size], self.vocab)
