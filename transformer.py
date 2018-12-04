@@ -23,8 +23,8 @@ class TransformerLayer(nn.Module):
         self.reset_parameters()
     
     def reset_parameters(self):
-        nn.init.xavier_uniform_(self.fc1.weight)
-        nn.init.xavier_uniform_(self.fc2.weight)
+        nn.init.normal_(self.fc1.weight, std=0.02)
+        nn.init.normal_(self.fc2.weight, std=0.02)
         nn.init.constant_(self.fc1.bias, 0.)
         nn.init.constant_(self.fc2.bias, 0.)
 
@@ -78,8 +78,8 @@ class MultiheadAttention(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.xavier_uniform_(self.in_proj_weight)
-        nn.init.xavier_uniform_(self.out_proj.weight)
+        nn.init.normal_(self.in_proj_weight, std=0.02)
+        nn.init.normal_(self.out_proj.weight, std=0.02)
         nn.init.constant_(self.in_proj_bias, 0.)
         nn.init.constant_(self.out_proj.bias, 0.)
 
@@ -186,7 +186,7 @@ class MultiheadAttention(nn.Module):
 
 def Embedding(num_embeddings, embedding_dim, padding_idx):
     m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
-    nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
+    nn.init.normal_(m.weight, std=0.02)
     nn.init.constant_(m.weight[padding_idx], 0)
     return m
 
@@ -217,7 +217,7 @@ class LearnedPositionalEmbedding(nn.Module):
         self.reset_parameters()
     
     def reset_parameters(self):
-        nn.init.constant_(self.weights.weight, 0.)
+        nn.init.normal_(self.weights.weight, std=0.02)
 
     def forward(self, input, offset=0):
         """Input is expected to be of size [seq_len x bsz]."""

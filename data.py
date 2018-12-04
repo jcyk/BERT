@@ -2,8 +2,10 @@ import random
 import torch
 import numpy as np
 
+from google_bert import create_instances_from_document
+
 PAD, UNK, CLS, SEP, MASK = '<-PAD->', '<-UNK->', '<-CLS->', '<-SEP->', '<-MASK->'
-BUFSIZE = 1024000
+BUFSIZE = 2048000
 
 def ListsToTensor(xs, vocab=None):
     max_len = max(len(x) for x in xs)
@@ -17,24 +19,38 @@ def ListsToTensor(xs, vocab=None):
     data = torch.LongTensor(ys).t_().contiguous()
     return data
 
-def random_mask(x, vocab):
-    masked_x, mask = [], []
-    _mask = np.random.choice(4, len(x), p = [0.85, 0.15*0.8, 0.15*0.1, 0.15*0.1])
-    #
-    for mi, xi in zip(_mask, x):
-        if mi == 0 or (xi == CLS or xi == SEP):
-            masked_x.append(xi)
-            mask.append(0)
-        else:
-            if mi == 1:
-                masked_x.append(MASK)
-            elif mi == 2:
-                masked_x.append(vocab.random_token())
-            elif mi == 3:
-                masked_x.append(xi)
-            mask.append(1)
-    return masked_x, mask
+def random_mask(tokens, masked_lm_prob, max_predictions_per_seq, vocab):
+    num_to_predict = min(max_predictions_per_seq, max(1, int(round(len(tokens) * masked_lm_prob))))
+    masked_tokens, mask = [], []
+    cand = []
+    for i, token in enumerate(tokens):
+        if token == CLS or token == SEP:
+            continue
+        cand.append(i)
+    random.shuffle(cand)
+    cand = set(cand[:num_to_predict])
 
+    masked_tokens, mask = [], []
+    for i, token in enumerate(tokens):
+        if i in cand:
+            if random.random() < 0.8:
+                masked_tokens.append(MASK)
+            else:
+                if random.random() < 0.5:
+                    masked_tokens.append(token)
+                else:
+                    masked_tokens.append(vocab.random_token())
+            mask.append(1)
+        else:
+            masked_tokens.append(token)
+            mask.append(0)
+    return masked_tokens, mask
+
+def _back_to_text_for_check(x, vocab):
+    w = x.t().tolist()
+    for sent in vocab.idx2token(w):
+        print (' '.join(sent))
+    
 def batchify(data, vocab):
     truth, inp, seg, msk = [], [], [], []
     nxt_snt_flag = []
@@ -42,27 +58,20 @@ def batchify(data, vocab):
         x = [CLS]+a+[SEP]+b+[SEP]
         truth.append(x)
         seg.append([0]*(len(a)+2) + [1]*(len(b)+1))
-        masked_x, mask = random_mask(x, vocab)
+        masked_x, mask = random_mask(x, 0.15, 20, vocab)
         inp.append(masked_x)
         msk.append(mask)
-        nxt_snt_flag.append(1)
-        
-        x = [CLS]+a+[SEP]+r+[SEP]
-        truth.append(x)
-        seg.append([0]*(len(a)+2) + [1]*(len(r)+1))
-        masked_x, mask = random_mask(x, vocab)
-        inp.append(masked_x)
-        msk.append(mask)
-        nxt_snt_flag.append(0)
-    
+        if r:
+            nxt_snt_flag.append(0)
+        else:
+            nxt_snt_flag.append(1)
+
     truth = ListsToTensor(truth, vocab)
     inp = ListsToTensor(inp, vocab)
     seg = ListsToTensor(seg)
     msk = ListsToTensor(msk).to(torch.uint8)
     nxt_snt_flag = torch.ByteTensor(nxt_snt_flag)
-
     return truth, inp, seg, msk, nxt_snt_flag
-
 
 class DataLoader(object):
     def __init__(self, vocab, filename, batch_size, max_len):
@@ -81,21 +90,23 @@ class DataLoader(object):
             self.stream = open(self.filename, encoding='utf8')
             lines = self.stream.readlines(BUFSIZE)
 
-        data = [] 
+        docs = [[]]
         for line in lines:
-            d = line.strip().split()[:self.max_len]
-            data.append(d)
-        idx = list(range(len(data)))
-        random.shuffle(idx)
-        batches = []
-        for a, r in enumerate(idx[:-1]):
-            b = a + 1
-            if max( len(data[b]) , len(data[r]) ) + len(data[a]) <= self.max_len:
-                batches.append((data[a], data[b], data[r]))
-        random.shuffle(batches)
+            tokens = line.strip().split()
+            if tokens:
+                docs[-1].append(tokens)
+            else:
+                docs.append([])
+        docs = [x for x in docs if x]
+        random.shuffle(docs)
+
+        data = []
+        for idx, doc in enumerate(docs):
+            data.extend(create_instances_from_document(docs, idx, self.max_len))
+
         idx = 0
-        while idx < len(batches):
-            yield batchify(batches[idx:idx+self.batch_size], self.vocab)
+        while idx < len(data):
+            yield batchify(data[idx:idx+self.batch_size], self.vocab)
             idx += self.batch_size
 
 class Vocab(object):

@@ -6,4 +6,4 @@ a simple yet complete implementation of the popular BERT model
 - Lazy file reader
 
 ## Quick Guide
-- This code is very simple, actually it can explain itself.
+- This code is very simple, it should explain itself.
