@@ -22,6 +22,27 @@ def _is_split_point(ch):
         return True
     return False
 
+def work_news_char(line):
+    "This function only works for news at char level"
+    tokenizer = BasicTokenizer() 
+    line = line.strip()
+    if line == "":
+        return [[]]
+    char_seq = tokenizer.tokenize(line)
+    res = []
+    sent = []
+    for ch in char_seq:
+        sent.append(ch)
+        if len(sent)>=20 and _is_split_point(ch):
+            res.append(sent)
+            sent = []
+    if sent:
+        if len(sent) <= 3 and len(res)>0:
+            res[-1].extend(sent)
+        else:
+            res.append(sent)
+    return res
+
 def work_wiki_char(line):
     "This function only works for zhwiki at char level"
     tokenizer = BasicTokenizer() 

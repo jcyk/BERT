@@ -3,11 +3,11 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
 import torch.multiprocessing as mp
 
 from bert import BERTLM
 from data import Vocab, DataLoader, CLS, SEP, MASK
+from adam import AdamWeightDecayOptimizer
 
 import argparse, os
 import random
@@ -21,18 +21,22 @@ def parse_config():
 
     parser.add_argument('--train_data', type=str)
     parser.add_argument('--vocab', type=str)
+    parser.add_argument('--min_occur_cnt', type=int)
     parser.add_argument('--batch_size', type=int)
     parser.add_argument('--warmup_steps', type=int)
     parser.add_argument('--lr', type=float)
     parser.add_argument('--max_len', type=int)
     parser.add_argument('--print_every', type=int)
     parser.add_argument('--save_every', type=int)
+    parser.add_argument('--start_from', type=str, default=None)
+    parser.add_argument('--save_dir', type=str)
 
     parser.add_argument('--world_size', type=int)
     parser.add_argument('--gpus', type=int)
     parser.add_argument('--MASTER_ADDR', type=str)
     parser.add_argument('--MASTER_PORT', type=str)
     parser.add_argument('--start_rank', type=int)
+    parser.add_argument('--backend', type=str)
 
     return parser.parse_args()
 
@@ -44,22 +48,39 @@ def average_gradients(model):
     """ Gradient averaging. """
     size = float(dist.get_world_size())
     for param in model.parameters():
-        dist.all_reduce(param.grad.data, op=dist.reduce_op.SUM, group=0)
+        dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
         param.grad.data /= size
 
 def run(args, local_rank):
     """ Distributed Synchronous """
     torch.manual_seed(1234)
-    vocab = Vocab(args.vocab, min_occur_cnt=30, specials=[CLS, SEP, MASK])
+    vocab = Vocab(args.vocab, min_occur_cnt=args.min_occur_cnt, specials=[CLS, SEP, MASK])
     if (args.world_size==1 or dist.get_rank() ==0):
         print (vocab.size)
     model = BERTLM(local_rank, vocab, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.layers)
+    if args.start_from is not None:
+        ckpt = torch.load(args.start_from)
+        model.load_state_dict(ckpt['model'])
     model = model.cuda(local_rank)
     
+    weight_decay_params = []
+    no_weight_decay_params = []
+    
+    for name, param in model.named_parameters():
+        if name.endswith('bias') or 'layer_norm' in name:
+            no_weight_decay_params.append(param)
+        else:
+            weight_decay_params.append(param)
+
     if args.world_size > 1:
         torch.manual_seed(1234+dist.get_rank())
         random.seed(5678+dist.get_rank())
-    optimizer = optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.999), eps=1e-6)#, weight_decay=0.01)
+
+    optimizer = AdamWeightDecayOptimizer([{'params':weight_decay_params, 'weight_decay':0.01},
+                           {'params':no_weight_decay_params, 'weight_decay':0.}],
+                           lr=1e-4, betas=(0.9, 0.999), eps=1e-6)
+    if args.start_from is not None:
+        optimizer.load_state_dict(ckpt['optimizer'])
 
     train_data = DataLoader(vocab, args.train_data, args.batch_size, args.max_len)
     batch_acm = 0
@@ -95,7 +116,9 @@ def run(args, local_rank):
                 acc_acm, ntokens_acm, acc_nxt_acm, npairs_acm = 0., 0., 0., 0.
                 loss_acm = 0.
             if (args.world_size==1 or dist.get_rank() ==0) and batch_acm%args.save_every == -1%args.save_every:
-                torch.save({'args':args, 'model':model.state_dict()}, 'ckpt/batch_%d'%(batch_acm,))
+                if not os.path.exists(args.save_dir):
+                    os.mkdir(args.save_dir)
+                torch.save({'args':args, 'model':model.state_dict(), 'optimizer':optimizer.state_dict()}, '%s/batch_%d'%(args.save_dir, batch_acm))
 
 def init_processes(args, local_rank, fn, backend='nccl'):
     """ Initialize the distributed environment. """
@@ -113,7 +136,7 @@ if __name__ == "__main__":
         exit(0)
     processes = []
     for rank in range(args.gpus):
-        p = mp.Process(target=init_processes, args=(args, rank, run))
+        p = mp.Process(target=init_processes, args=(args, rank, run, args.backend))
         p.start()
         processes.append(p)
 

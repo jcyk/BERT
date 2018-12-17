@@ -13,3 +13,4 @@ a simple yet complete implementation of the popular BERT model
   - --MASTER_ADDR #master node IP
   - --MASTER_PORT #master node port
   - --start_rank # range from 0 to world_size-1, the index of the first gpu on this machine
+  - --backend # 'nccl' or 'gloo', nccl is generally better but may not work on some machines

@@ -137,7 +137,7 @@ class Vocab(object):
         return self._padding_idx
     
     def random_token(self):
-        return self.idx2token(np.random.randint(self.size))
+        return self.idx2token(1 + np.random.randint(self.size-1))
 
     def idx2token(self, x):
         if isinstance(x, list):

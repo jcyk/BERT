@@ -3,8 +3,9 @@ python3 train.py --embed_dim 768 \
                       --num_heads 12 \
                       --layers 12 \
                       --dropout 0.1 \
-                      --train_data zhwiki\
-                      --vocab zhwiki_vocab\
+                      --train_data toy/train\
+                      --vocab toy/vocab\
+                      --min_occur_cnt 30\
                       --batch_size 64\
                       --warmup_steps 10000\
                       --lr 1e-4\
@@ -15,4 +16,6 @@ python3 train.py --embed_dim 768 \
                       --MASTER_PORT 29500\
                       --start_rank 0\
                       --print_every 100\
-                      --save_every 10000
+                      --save_every 10000\
+                      --save_dir ckpt\
+                      --backend nccl
