@@ -5,7 +5,7 @@ import numpy as np
 from google_bert import create_instances_from_document
 
 PAD, UNK, CLS, SEP, MASK = '<-PAD->', '<-UNK->', '<-CLS->', '<-SEP->', '<-MASK->'
-BUFSIZE = 2048000
+BUFSIZE = 4096000
 
 def ListsToTensor(xs, vocab=None):
     max_len = max(len(x) for x in xs)
@@ -80,12 +80,14 @@ class DataLoader(object):
         self.max_len = max_len
         self.filename = filename
         self.stream = open(self.filename, encoding='utf8')
+        self.epoch_id = 0
 
     def __iter__(self):
         
         lines = self.stream.readlines(BUFSIZE)
 
         if not lines:
+            self.epoch_id += 1
             self.stream.close()
             self.stream = open(self.filename, encoding='utf8')
             lines = self.stream.readlines(BUFSIZE)

@@ -6,7 +6,7 @@ import argparse
 
 from google_bert import BasicTokenizer
 
-BUFSIZE = 2048000
+BUFSIZE = 40960000
 
 def parse_config():
     parser = argparse.ArgumentParser()

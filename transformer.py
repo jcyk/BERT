@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn import Parameter
 import torch.nn.functional as F
 
-from utils import gelu
+from utils import gelu, LayerNorm
 import math
 
 class TransformerLayer(nn.Module):
@@ -13,13 +13,13 @@ class TransformerLayer(nn.Module):
         self.self_attn = MultiheadAttention(embed_dim, num_heads, dropout, weights_dropout)
         self.fc1 = nn.Linear(embed_dim, ff_embed_dim)
         self.fc2 = nn.Linear(ff_embed_dim, embed_dim)
-        self.attn_layer_norm = nn.LayerNorm(embed_dim)
-        self.ff_layer_norm = nn.LayerNorm(embed_dim)
+        self.attn_layer_norm = LayerNorm(embed_dim)
+        self.ff_layer_norm = LayerNorm(embed_dim)
         self.with_external = with_external
         self.dropout = dropout
         if self.with_external:
             self.external_attn = MultiheadAttention(embed_dim, num_heads, dropout, weights_dropout)
-            self.external_layer_norm = nn.LayerNorm(embed_dim)
+            self.external_layer_norm = LayerNorm(embed_dim)
         self.reset_parameters()
     
     def reset_parameters(self):
@@ -120,7 +120,7 @@ class MultiheadAttention(nn.Module):
         assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, src_len]
 
         if attn_mask is not None:
-            attn_weights = attn_weights.masked_fill(
+            attn_weights.masked_fill_(
                 attn_mask.unsqueeze(0),
                 float('-inf')
             )
@@ -250,7 +250,6 @@ class SinusoidalPositionalEmbedding(nn.Module):
         emb = torch.arange(num_embeddings, dtype=torch.float).unsqueeze(1) * emb.unsqueeze(0)
         emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1).view(num_embeddings, -1)
         if embedding_dim % 2 == 1:
-            # zero pad
             emb = torch.cat([emb, torch.zeros(num_embeddings, 1)], dim=1)
         return emb
 

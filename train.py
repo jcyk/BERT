@@ -11,6 +11,7 @@ from adam import AdamWeightDecayOptimizer
 
 import argparse, os
 import random
+
 def parse_config():
     parser = argparse.ArgumentParser()
     parser.add_argument('--embed_dim', type=int)
@@ -31,6 +32,8 @@ def parse_config():
     parser.add_argument('--start_from', type=str, default=None)
     parser.add_argument('--save_dir', type=str)
 
+    parser.add_argument('--approx', type=str, default='none')
+    parser.add_argument('--fp16', action='store_true')
     parser.add_argument('--world_size', type=int)
     parser.add_argument('--gpus', type=int)
     parser.add_argument('--MASTER_ADDR', type=str)
@@ -48,8 +51,9 @@ def average_gradients(model):
     """ Gradient averaging. """
     size = float(dist.get_world_size())
     for param in model.parameters():
-        dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
-        param.grad.data /= size
+        if param.grad is not None:
+            dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
+            param.grad.data /= size
 
 def run(args, local_rank):
     """ Distributed Synchronous """
@@ -57,9 +61,9 @@ def run(args, local_rank):
     vocab = Vocab(args.vocab, min_occur_cnt=args.min_occur_cnt, specials=[CLS, SEP, MASK])
     if (args.world_size==1 or dist.get_rank() ==0):
         print (vocab.size)
-    model = BERTLM(local_rank, vocab, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.layers)
+    model = BERTLM(local_rank, vocab, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.layers, args.approx)
     if args.start_from is not None:
-        ckpt = torch.load(args.start_from)
+        ckpt = torch.load(args.start_from, map_location='cpu')
         model.load_state_dict(ckpt['model'])
     model = model.cuda(local_rank)
     
@@ -71,21 +75,35 @@ def run(args, local_rank):
             no_weight_decay_params.append(param)
         else:
             weight_decay_params.append(param)
-
+    grouped_params = [{'params':weight_decay_params, 'weight_decay':0.01},
+                        {'params':no_weight_decay_params, 'weight_decay':0.}]
     if args.world_size > 1:
         torch.manual_seed(1234+dist.get_rank())
         random.seed(5678+dist.get_rank())
+    
+    if args.fp16:
+        try:
+            from apex.optimizers import FP16_Optimizer
+            from apex.optimizers import FusedAdam
+        except ImportError:
+            raise ImportError("Please install apex from https://www.github.com/nvidia/apex to use fp16 training.")
+        optimizer = FusedAdam(grouped_params,
+                              lr=1e-4,
+                              betas=(0.9, 0.999),
+                              eps =1e-6,
+                              bias_correction=False,
+                              max_grad_norm=1.0)
+        optimizer = FP16_Optimizer(optimizer, dynamic_loss_scale=True)
 
-    optimizer = AdamWeightDecayOptimizer([{'params':weight_decay_params, 'weight_decay':0.01},
-                           {'params':no_weight_decay_params, 'weight_decay':0.}],
+    else:
+        optimizer = AdamWeightDecayOptimizer(grouped_params,
                            lr=1e-4, betas=(0.9, 0.999), eps=1e-6)
     if args.start_from is not None:
         optimizer.load_state_dict(ckpt['optimizer'])
 
     train_data = DataLoader(vocab, args.train_data, args.batch_size, args.max_len)
     batch_acm = 0
-    acc_acm, ntokens_acm, acc_nxt_acm, npairs_acm = 0., 0., 0., 0.
-    loss_acm = 0.
+    acc_acm, ntokens_acm, acc_nxt_acm, npairs_acm, loss_acm = 0., 0., 0., 0., 0.
     while True:
         model.train()
         for truth, inp, seg, msk, nxt_snt_flag in train_data:
@@ -105,20 +123,21 @@ def run(args, local_rank):
             ntokens_acm += ntokens
             acc_nxt_acm += acc_nxt
             npairs_acm += npairs
-
-            loss.backward()
+            if args.fp16:
+                optimizer.backward(loss)
+            else:
+                loss.backward()
             if args.world_size > 1:
                 average_gradients(model)
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             if (args.world_size==1 or dist.get_rank() ==0) and batch_acm%args.print_every == -1%args.print_every:
-                print ('batch_acm %d, loss %.3f, acc %.3f, nxt_acc %.3f'%(batch_acm, loss_acm/batch_acm, acc_acm/ntokens_acm, acc_nxt_acm/npairs_acm))
-                acc_acm, ntokens_acm, acc_nxt_acm, npairs_acm = 0., 0., 0., 0.
-                loss_acm = 0.
+                print ('batch_acm %d, loss %.3f, acc %.3f, nxt_acc %.3f'%(batch_acm, loss_acm/args.print_every, acc_acm/ntokens_acm, acc_nxt_acm/npairs_acm))
+                acc_acm, ntokens_acm, acc_nxt_acm, npairs_acm, loss_acm = 0., 0., 0., 0., 0.
             if (args.world_size==1 or dist.get_rank() ==0) and batch_acm%args.save_every == -1%args.save_every:
                 if not os.path.exists(args.save_dir):
                     os.mkdir(args.save_dir)
-                torch.save({'args':args, 'model':model.state_dict(), 'optimizer':optimizer.state_dict()}, '%s/batch_%d'%(args.save_dir, batch_acm))
+                torch.save({'args':args, 'model':model.state_dict(), 'optimizer':optimizer.state_dict()}, '%s/epoch%d_batch_%d'%(args.save_dir, train_data.epoch_id, batch_acm))
 
 def init_processes(args, local_rank, fn, backend='nccl'):
     """ Initialize the distributed environment. """

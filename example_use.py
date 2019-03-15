@@ -4,17 +4,23 @@ import torch.nn.functional as F
 import random
 #### Load pretrained bert model
 from bert import BERTLM
-from google_bert import BasicTokenizer
 from data import Vocab, CLS, SEP, MASK
-def init_bert_model(args, device):
-    bert_ckpt= torch.load(args.bert_path)
+def init_bert_model(args, device, bert_vocab):
+    bert_ckpt= torch.load(args.bert_path, map_location='cpu')
     bert_args = bert_ckpt['args']
-    bert_vocab = Vocab(bert_args.vocab, min_occur_cnt=bert_args.min_occur_cnt, specials=[CLS, SEP, MASK])
-    bert_model = BERTLM(device, bert_vocab, bert_args.embed_dim, bert_args.ff_embed_dim, bert_args.num_heads, bert_args.dropout, bert_args.layers)
+    bert_vocab = Vocab(bert_vocab, min_occur_cnt=bert_args.min_occur_cnt, specials=[CLS, SEP, MASK])
+    bert_model = BERTLM(device, bert_vocab, bert_args.embed_dim, bert_args.ff_embed_dim, bert_args.num_heads, bert_args.dropout, bert_args.layers, bert_args.approx)
     bert_model.load_state_dict(bert_ckpt['model'])
     bert_model = bert_model.cuda(device)
     return bert_model, bert_vocab, bert_args
-
+#####
+"""
+The above function loads all information from a pretrained BERT, including
+the model, the vocabulary, and the hyper-parameters.
+Now you should live on your own.
+Below gives an example.
+"""
+#####
 ### Define your own model
 def ListsToTensor(xs, vocab):
 
@@ -36,12 +42,11 @@ def batchify(data, vocab):
 
 class myDataLoader(object):
     def __init__(self, filename, vocab, batch_size, for_train):
-        tokenizer = BasicTokenizer()
-        all_data = [[ tokenizer.tokenize(x) for x in line.strip().split('|') ] for line in open(filename, encoding='utf8').readlines()]
+        all_data = [ [ x.split() for x in line.strip().split('|') ] for line in open(filename, encoding='utf8').readlines()]
 
         self.data = []
         for d in all_data:
-            skip = not (len(d) == 4)
+            skip = not (len(d) == 2)
             for j, i in enumerate(d):
                 if not for_train:
                     d[j] = i[:30]
@@ -65,7 +70,7 @@ class myDataLoader(object):
             data = [self.data[i] for i in idx[cur:cur+self.batch_size]]
             cur += self.batch_size
             yield batchify(data, self.vocab)
-        raise StopIteration
+        return
 
 def label_smoothed_nll_loss(log_probs, target, eps):
     #log_probs: N x C
@@ -122,6 +127,7 @@ import argparse
 def parse_config():
     parser = argparse.ArgumentParser()
     parser.add_argument('--bert_path', type=str)
+    parser.add_argument('--bert_vocab', type=str)
     parser.add_argument('--train_data',type=str)
     parser.add_argument('--dev_data',type=str)
     parser.add_argument('--train_batch_size',type=int)
@@ -136,7 +142,7 @@ def parse_config():
 
 if __name__ == "__main__":
     args = parse_config()
-    bert_model, bert_vocab, bert_args = init_bert_model(args, args.gpu_id)
+    bert_model, bert_vocab, bert_args = init_bert_model(args, args.gpu_id, args.bert_vocab)
 
     train_data = myDataLoader(args.train_data, bert_vocab, args.train_batch_size, for_train=True)
     dev_data = myDataLoader(args.dev_data, bert_vocab, args.train_batch_size, for_train=True)
@@ -178,4 +184,4 @@ if __name__ == "__main__":
                     torch.save({'args':args, 'model':model.state_dict()}, 'ckpt/batch%d_acc_%.3f'%(batches_processed, dev_acc))
 
                 print ("Dev Batch %d, acc %.5f"%(batches_processed, dev_acc))
-                model.train() 
+                model.train()

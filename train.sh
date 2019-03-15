@@ -5,15 +5,15 @@ python3 train.py --embed_dim 768 \
                       --dropout 0.1 \
                       --train_data toy/train\
                       --vocab toy/vocab\
-                      --min_occur_cnt 30\
+                      --min_occur_cnt 50\
                       --batch_size 64\
                       --warmup_steps 10000\
                       --lr 1e-4\
                       --max_len 128\
                       --world_size 8\
                       --gpus 8\
-                      --MASTER_ADDR 100.88.66.72\
-                      --MASTER_PORT 29500\
+                      --MASTER_ADDR localhost\
+                      --MASTER_PORT 29556\
                       --start_rank 0\
                       --print_every 100\
                       --save_every 10000\
