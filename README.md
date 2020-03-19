@@ -19,11 +19,14 @@ An internal variant of this code produced pre-trained models that are widely use
 ## Quick Guide
 
 - This code is very simple, it should explain itself.
-- Train a model from scratch 
+- Train a model from scratch
   - Prepare training corpus and vocab
     - use `preprocess.py`, see more details there
+  - Training
+    - `sh train.sh`
+  - For hyper-parameter and all other settings, see the argument parsers in the above two files. We provide a piece of raw text from zhwiki in `toy` folder.
 
-  - Distributed training settings
+  - Distributed training settings (in `train.sh`)
     - --world_size #total number of gpus
     - --gpus #gpus on this machine
     - --MASTER_ADDR #master node IP
