@@ -1,13 +1,11 @@
 # BERT
-a simple yet complete implementation of the popular BERT model **added with some special treatment to Chinese**.
+a simple yet complete implementation of the popular BERT model (**added with some special treatment to Chinese**).
 
 **update!**  I got no idea why this repo suddenly gets some public attention but thanks. I just made an update to make it better.
 
-a simple yet complete implementation of the popular BERT model.
-
 Experiments show this code could achieve close, if not better, performance to that of Google.
 
-An internal vairant of this code produced pre-trained models that are widely used at Tencent.
+An internal variant of this code produced pre-trained models that are widely used at Tencent.
 
 ## Advanced Features
 
