@@ -1,0 +1,12 @@
+python3 example_use.py \
+    --bert_path ../ckpt/epoch4_batch_419999 \
+    --bert_vocab ./data/zhwiki_vocab \
+    --train_data ./data/train \
+    --dev_data ./data/dev \
+    --train_batch_size 128\
+    --lr 2e-5\
+    --dropout 0.1\
+    --print_every 100 \
+    --eval_every 10000\
+    --gpu_id 0\
+    --fine_tune

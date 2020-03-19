@@ -1,11 +1,11 @@
 import random
 import torch
 import numpy as np
-
+import re
 from google_bert import create_instances_from_document
 
-PAD, UNK, CLS, SEP, MASK = '<-PAD->', '<-UNK->', '<-CLS->', '<-SEP->', '<-MASK->'
-BUFSIZE = 4096000
+PAD, UNK, CLS, SEP, MASK, NUM, NOT_CHINESE = '<-PAD->', '<-UNK->', '<-CLS->', '<-SEP->', '<-MASK->', '<-NUM->', '<-NOT_CHINESE->'
+BUFSIZE = 40960000
 
 def ListsToTensor(xs, vocab=None):
     max_len = max(len(x) for x in xs)
@@ -113,18 +113,28 @@ class DataLoader(object):
 
 class Vocab(object):
     def __init__(self, filename, min_occur_cnt, specials = None):
-        idx2token = [PAD, UNK] + ( specials if specials is not None else [])
+        self.num_re = re.compile(r"^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$")
+        idx2token = [PAD, UNK, NUM, NOT_CHINESE] + ( specials if specials is not None else [])
         for line in open(filename, encoding='utf8').readlines():
             try: 
                 token, cnt = line.strip().split()
             except:
                 continue
-            if int(cnt) >= min_occur_cnt:
-                idx2token.append(token)
+            if self.num_re.match(token) is not None:
+                continue
+            if _has_non_chinese_char(token):
+                if int(cnt) >= 2*min_occur_cnt:
+                    idx2token.append(token)
+            else:
+                if int(cnt) >= min_occur_cnt:
+                    idx2token.append(token)
+
         self._token2idx = dict(zip(idx2token, range(len(idx2token))))
         self._idx2token = idx2token
         self._padding_idx = self._token2idx[PAD]
         self._unk_idx = self._token2idx[UNK]
+        self._num_idx = self._token2idx[NUM]
+        self._no_chinese_idx = self._token2idx[NOT_CHINESE]
 
     @property
     def size(self):
@@ -138,6 +148,14 @@ class Vocab(object):
     def padding_idx(self):
         return self._padding_idx
     
+    @property
+    def num_idx(self):
+        return self._num_idx
+
+    @property
+    def no_chinese_idx(self):
+        return self._no_chinese_idx
+
     def random_token(self):
         return self.idx2token(1 + np.random.randint(self.size-1))
 
@@ -149,4 +167,24 @@ class Vocab(object):
     def token2idx(self, x):
         if isinstance(x, list):
             return [self.token2idx(i) for i in x]
-        return self._token2idx.get(x, self.unk_idx)
+        if x in self._token2idx:
+            return self._token2idx[x]
+        if self.num_re.match(x) is not None:
+            return self.num_idx
+        if _has_non_chinese_char(x):
+            return self._no_chinese_idx
+        return self.unk_idx
+
+def _has_non_chinese_char(s):
+    for x in s:
+        cp = ord(x)
+        if not ((cp >= 0x4E00 and cp <= 0x9FFF) or
+            (cp >= 0x3400 and cp <= 0x4DBF) or
+            (cp >= 0x20000 and cp <= 0x2A6DF) or
+            (cp >= 0x2A700 and cp <= 0x2B73F) or
+            (cp >= 0x2B740 and cp <= 0x2B81F) or
+            (cp >= 0x2B820 and cp <= 0x2CEAF) or
+            (cp >= 0xF900 and cp <= 0xFAFF) or
+            (cp >= 0x2F800 and cp <= 0x2FA1F)):
+            return True
+    return False

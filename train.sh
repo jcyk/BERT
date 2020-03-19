@@ -3,8 +3,8 @@ python3 train.py --embed_dim 768 \
                       --num_heads 12 \
                       --layers 12 \
                       --dropout 0.1 \
-                      --train_data toy/train\
-                      --vocab toy/vocab\
+                      --train_data data/toy\
+                      --vocab data/toy_vocab\
                       --min_occur_cnt 50\
                       --batch_size 64\
                       --warmup_steps 10000\

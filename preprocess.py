@@ -10,9 +10,9 @@ BUFSIZE = 40960000
 
 def parse_config():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--src_file', type=str)
-    parser.add_argument('--tgt_file', type=str)
-    parser.add_argument('--nprocessors', type=int)
+    parser.add_argument('--src_file', type=str, default='toy/sample_from_zhwiki')
+    parser.add_argument('--tgt_file', type=str, default='data/toy')
+    parser.add_argument('--nprocessors', type=int, default=8)
     return parser.parse_args()
 
 
